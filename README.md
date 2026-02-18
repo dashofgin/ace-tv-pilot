@@ -10,7 +10,7 @@ Built for low-power devices like Intel N100 mini PCs.
 - Auto-detects interlaced video and MP2 audio — transcodes only when needed (VAAPI hardware acceleration)
 - EPG (Electronic Program Guide) with current/upcoming programs from [epg.ovh](https://epg.ovh)
 - Channel status checker with P2P peer count monitoring
-- Simple auth with session cookies
+- Password-protected access (bcrypt hashed)
 
 ## How it works
 
@@ -46,9 +46,6 @@ Browser (hls.js) ←→ nginx ←→ Node.js backend ←→ Ace Stream Engine
 git clone https://github.com/dashofgin/ace-tv-pilot.git
 cd ace-tv-pilot
 
-# Configure
-cp .env.example .env  # Edit AUTH_PASSWORD and SESSION_SECRET
-
 # Build and run
 docker compose up -d --build
 
@@ -57,16 +54,6 @@ cd frontend && npm install && npm run build && cd ..
 ```
 
 Open `http://localhost:3000` in your browser.
-
-### Environment variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `AUTH_USERNAME` | `admin` | Login username |
-| `AUTH_PASSWORD` | `changeme` | Login password |
-| `SESSION_SECRET` | `change-this-secret` | Session cookie secret |
-| `EPG_URL` | `https://epg.ovh/pl.xml` | EPG XML source |
-| `TZ` | `Europe/Warsaw` | Timezone for EPG and cron |
 
 ## Project structure
 
