@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import LoginPage from './pages/LoginPage';
 import WatchPage from './pages/WatchPage';
 import ManagePage from './pages/ManagePage';
+import GuidePage from './pages/GuidePage';
 import Navbar from './components/Navbar';
 
 function App() {
@@ -39,6 +40,7 @@ function App() {
       <Navbar onLogout={() => setAuthenticated(false)} />
       <Routes>
         <Route path="/watch" element={<WatchPage />} />
+        <Route path="/guide" element={<GuidePage />} />
         <Route path="/manage" element={<ManagePage />} />
         <Route path="*" element={<Navigate to="/watch" replace />} />
       </Routes>

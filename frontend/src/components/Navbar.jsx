@@ -24,6 +24,7 @@ export default function Navbar({ onLogout }) {
           <div className="flex items-center gap-2">
             <span className="text-xl font-bold text-blue-400 mr-4">Dash TV</span>
             <NavLink to="/watch" className={linkClass}>Ogladaj</NavLink>
+            <NavLink to="/guide" className={linkClass}>Telegazeta</NavLink>
             <NavLink to="/manage" className={linkClass}>Kanaly</NavLink>
           </div>
           <div className="flex items-center gap-3">

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useChannels } from '../hooks/useChannels';
 import { useStream } from '../hooks/useStream';
 import ChannelGrid from '../components/ChannelGrid';
@@ -22,6 +23,22 @@ export default function WatchPage() {
   const { playbackUrl, activeHash, stats, loading: streamLoading, error, startStream, stopStream } = useStream();
   const [filter, setFilter] = useState('all');
   const [activeChannel, setActiveChannel] = useState(null);
+  const location = useLocation();
+
+  // Auto-select channel when navigating from Telegazeta
+  useEffect(() => {
+    const channelId = location.state?.channelId;
+    if (channelId && channels.length > 0 && !activeChannel) {
+      const ch = channels.find(c => c.id === channelId);
+      if (ch) {
+        const primaryLink = ch.links?.find(l => l.isPrimary) || ch.links?.[0];
+        if (primaryLink) {
+          setActiveChannel(ch);
+          startStream(primaryLink.hash);
+        }
+      }
+    }
+  }, [channels, location.state]);
 
   const handleSelect = (channel) => {
     const primaryLink = channel.links?.find(l => l.isPrimary) || channel.links?.[0];
