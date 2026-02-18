@@ -5,7 +5,7 @@ const sessions = new Map();
 
 async function startStream(hash) {
   // Use format=json to get proper session with sliding-window manifest URL
-  const url = `${ACESTREAM_URL}/ace/manifest.m3u8?id=${hash}&transcode_audio=1&format=json`;
+  const url = `${ACESTREAM_URL}/ace/manifest.m3u8?id=${hash}&format=json`;
 
   const response = await fetch(url, {
     signal: AbortSignal.timeout(30000),

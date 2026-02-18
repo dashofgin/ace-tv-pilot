@@ -1,4 +1,5 @@
 import StatusDot from './StatusDot';
+import EpgBar from './EpgBar';
 
 export default function ChannelCard({ channel, isActive, onClick }) {
   const primaryLink = channel.links?.find(l => l.isPrimary) || channel.links?.[0];
@@ -41,11 +42,7 @@ export default function ChannelCard({ channel, isActive, onClick }) {
         {channel.name}
       </span>
 
-      {channel.epgName && (
-        <span className="text-xs text-gray-400 mt-1 truncate w-full text-center">
-          {channel.epgName}
-        </span>
-      )}
+      <EpgBar epgName={channel.epgName} />
     </button>
   );
 }

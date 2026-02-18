@@ -10,18 +10,20 @@ function getCheckStatus() {
 
 async function checkLink(hash) {
   try {
-    const result = await acestream.startStream(hash);
+    await acestream.startStream(hash);
+
+    // Wait for P2P peers to gather before checking stats
+    await new Promise(resolve => setTimeout(resolve, 15000));
+
     let peers = 0;
     let status = 'fail';
 
-    if (result.statUrl || result.playbackUrl) {
-      const stats = await acestream.getStats(hash);
-      if (stats) {
-        peers = stats.peers || 0;
-        if (peers >= 5) status = 'ok';
-        else if (peers >= 1) status = 'low';
-        else status = 'fail';
-      }
+    const stats = await acestream.getStats(hash);
+    if (stats) {
+      peers = stats.peers || 0;
+      if (peers >= 5) status = 'ok';
+      else if (peers >= 1) status = 'low';
+      else status = 'fail';
     }
 
     await acestream.stopStream(hash);
