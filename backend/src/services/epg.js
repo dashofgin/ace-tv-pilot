@@ -1,70 +1,178 @@
-const { XMLParser } = require('fast-xml-parser');
 const { getChannels, getEpgCache, saveEpgCache } = require('./storage');
 
-const EPG_URL = process.env.EPG_URL || 'https://epg.ovh/pl.xml';
+// Mapping: epgName (lowercase) → programtv.onet.pl slug
+const ONET_SLUGS = {
+  'tvp 1': 'tvp-1-321',
+  'tvp 2': 'tvp-2-323',
+  'tvp 3': 'tvp-3-172',
+  'tvp sport': 'tvp-sport-40',
+  'tvp hd': 'tvp-hd-101',
+  'tvp abc': 'tvp-abc-182',
+  'tvn 24': 'tvn-24-347',
+  'tvn 7': 'tvn-7-326',
+  'polsat': 'polsat-38',
+  'polsat sport 1': 'polsat-sport-334',
+  'polsat sport 2': 'polsat-sport-extra-485',
+  'polsat sport premium 1': 'polsat-sport-premium-1-643',
+  'canal+ premium': 'canal-246',
+  'canal+ 1': 'canal-1-295',
+  'canal+ now': null, // not available on onet
+  'canal+ sport': 'canal-sport-14',
+  'canal+ sport 2': 'canal-sport-2-15',
+  'canal+ sport 3': 'canal-sport-3-674',
+  'canal+ sport 4': 'canal-sport-4-675',
+  'canal+ sport 5': null, // not available on onet
+  'canal+ dokument': 'canal-discovery-307',
+  'canal+ family': null, // not available on onet
+  'eurosport 1': 'eurosport-1-93',
+  'eurosport 2': 'eurosport-2-76',
+  'eleven sports 1': 'eleven-208',
+  'eleven sports 2': 'eleven-sports-212',
+  'eleven sports 3': 'eleven-extra-531',
+  'eleven sports 4': 'eleven-sports-4-607',
+  'sky sport 1': 'sky-sport-hd-1-445',
+  'ale kino+': 'ale-kino-319',
+  'cinemax': 'cinemax-59',
+  'cinemax2': 'cinemax2-58',
+  'hbo2': 'hbo2-24',
+  'hbo3': 'hbo-3-25',
+  'fx': 'fox-127',
+  'fx comedy': 'fox-comedy-75',
+  'paramount network': 'paramount-channel-hd-65',
+  'discovery channel': 'discovery-channel-202',
+  'discovery historia': 'discovery-historia-54',
+  'dtx': 'discovery-turbo-xtra-239',
+  'national geographic': 'national-geographic-channel-32',
+  'national geographic wild': 'nat-geo-wild-77',
+  'bbc earth': 'bbc-earth-274',
+  'bbc first': 'bbc-hd-261',
+  'history': 'history-91',
+  'planete+': 'planete-349',
+  'travel channel': 'travel-channel-201',
+  'adventure': 'adventure-303',
+  'animal planet': 'animal-planet-hd-284',
+  'nicktoons': 'nickelodeon-hd-44',
+  'tv puls': 'tv-puls-332',
+  'ttv': 'ttv-624',
+};
 
-async function fetchAndParseEPG() {
-  console.log('Fetching EPG from:', EPG_URL);
+const ONET_BASE = 'https://programtv.onet.pl/program-tv';
 
-  const response = await fetch(EPG_URL, { signal: AbortSignal.timeout(120000) });
-  if (!response.ok) {
-    throw new Error(`EPG fetch error: ${response.status}`);
-  }
+async function fetchChannelFromOnet(slug, epgName, date) {
+  const dayOffset = date === 'today' ? 0 : 1;
+  const url = `${ONET_BASE}/${slug}?dzien=${dayOffset}`;
 
-  const xml = await response.text();
-  console.log(`EPG XML fetched, size: ${(xml.length / 1024 / 1024).toFixed(1)}MB`);
-
-  const parser = new XMLParser({
-    ignoreAttributes: false,
-    attributeNamePrefix: '@_',
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(15000),
+    headers: { 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36' },
   });
+  if (!response.ok) return [];
 
-  const parsed = parser.parse(xml);
-  const tv = parsed.tv || {};
-  const rawPrograms = tv.programme || [];
-  const programs = Array.isArray(rawPrograms) ? rawPrograms : [rawPrograms];
+  const html = await response.text();
 
-  // Get channel epgNames from our channels
-  const data = getChannels();
-  const epgNames = new Set(
-    data.channels
-      .filter(ch => ch.epgName)
-      .map(ch => ch.epgName.toLowerCase())
-  );
+  // Extract hours and titles from HTML
+  const hours = [];
+  const titles = [];
+  const hourRegex = /class="hour">(\d{2}:\d{2})/g;
+  const titleRegex = /class="titles"[^>]*>[\s\S]*?<a[^>]*>([^<]+)/g;
 
-  const now = Date.now();
-  const next24h = now + 24 * 60 * 60 * 1000;
+  let m;
+  while ((m = hourRegex.exec(html)) !== null) hours.push(m[1]);
+  while ((m = titleRegex.exec(html)) !== null) titles.push(m[1].trim());
 
-  const filtered = [];
+  // Build programs with proper dates
+  const now = new Date();
+  const baseDate = date === 'today' ? new Date(now) : new Date(now.getTime() + 86400000);
+  baseDate.setHours(0, 0, 0, 0);
 
-  for (const prog of programs) {
-    const channelId = (prog['@_channel'] || '').toLowerCase();
+  const programs = [];
+  let prevMinutes = -1;
+  let dayAdd = 0;
 
-    // Match against our channel epgNames
-    let matched = false;
-    for (const epgName of epgNames) {
-      if (channelId.includes(epgName.toLowerCase()) || epgName.toLowerCase().includes(channelId)) {
-        matched = true;
-        break;
-      }
-    }
-    if (!matched) continue;
+  for (let i = 0; i < Math.min(hours.length, titles.length); i++) {
+    const [h, min] = hours[i].split(':').map(Number);
+    const totalMinutes = h * 60 + min;
 
-    const start = parseEpgDate(prog['@_start']);
-    const stop = parseEpgDate(prog['@_stop']);
+    // Detect midnight crossing
+    if (totalMinutes < prevMinutes && prevMinutes > 0) dayAdd = 1;
+    prevMinutes = totalMinutes;
 
-    if (!start || !stop) continue;
-    if (stop.getTime() < now || start.getTime() > next24h) continue;
+    const start = new Date(baseDate);
+    start.setDate(start.getDate() + dayAdd);
+    start.setHours(h, min, 0, 0);
 
-    filtered.push({
-      channel: prog['@_channel'],
-      title: typeof prog.title === 'object' ? prog.title['#text'] || '' : prog.title || '',
+    programs.push({
+      channel: epgName,
+      title: titles[i],
       start: start.toISOString(),
-      stop: stop.toISOString(),
     });
   }
 
-  console.log(`EPG: ${filtered.length} programs matched for next 24h`);
+  // Calculate stop times (start of next program)
+  for (let i = 0; i < programs.length - 1; i++) {
+    programs[i].stop = programs[i + 1].start;
+  }
+  // Last program: assume 2 hour duration
+  if (programs.length > 0) {
+    const last = programs[programs.length - 1];
+    const lastStop = new Date(new Date(last.start).getTime() + 2 * 3600000);
+    last.stop = lastStop.toISOString();
+  }
+
+  return programs;
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function fetchAndParseEPG() {
+  const data = getChannels();
+  const channelsWithEpg = data.channels.filter(ch => ch.epgName);
+
+  const allPrograms = [];
+  let fetched = 0;
+  let skipped = 0;
+
+  for (const ch of channelsWithEpg) {
+    const name = ch.epgName.toLowerCase();
+    const slug = ONET_SLUGS[name];
+    if (!slug) {
+      skipped++;
+      continue;
+    }
+
+    try {
+      // Fetch today and tomorrow
+      const todayProgs = await fetchChannelFromOnet(slug, name, 'today');
+      await sleep(500);
+      const tomorrowProgs = await fetchChannelFromOnet(slug, name, 'tomorrow');
+      await sleep(500);
+
+      allPrograms.push(...todayProgs, ...tomorrowProgs);
+      fetched++;
+      console.log(`EPG: ${ch.epgName} - ${todayProgs.length + tomorrowProgs.length} programs`);
+    } catch (err) {
+      console.error(`EPG: ${ch.epgName} failed:`, err.message);
+    }
+  }
+
+  // Filter to next 24h and deduplicate
+  const now = Date.now();
+  const next24h = now + 24 * 60 * 60 * 1000;
+  const seen = new Set();
+
+  const filtered = allPrograms.filter(p => {
+    const stop = new Date(p.stop).getTime();
+    const start = new Date(p.start).getTime();
+    if (stop < now || start > next24h) return false;
+    const key = `${p.channel}|${p.start}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  console.log(`EPG: ${filtered.length} programs from ${fetched} channels (${skipped} skipped)`);
 
   const cache = { programs: filtered, updatedAt: new Date().toISOString() };
   saveEpgCache(cache);
@@ -72,28 +180,15 @@ async function fetchAndParseEPG() {
   return cache;
 }
 
-function parseEpgDate(str) {
-  if (!str) return null;
-  // Format: "20250217060000 +0100"
-  const match = str.match(/(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\s*([+-]\d{4})?/);
-  if (!match) return null;
-  const [, y, m, d, h, min, s, tz] = match;
-  const dateStr = `${y}-${m}-${d}T${h}:${min}:${s}${tz ? tz.replace(/(\d{2})(\d{2})/, '$1:$2') : '+00:00'}`;
-  return new Date(dateStr);
-}
-
 function getEpgForChannel(epgName) {
   if (!epgName) return { now: null, next: null, schedule: [] };
 
   const cache = getEpgCache();
   const now = Date.now();
+  const name = epgName.toLowerCase();
 
   const programs = (cache.programs || [])
-    .filter(p => {
-      const ch = p.channel.toLowerCase();
-      const name = epgName.toLowerCase();
-      return ch.includes(name) || name.includes(ch);
-    })
+    .filter(p => p.channel === name)
     .sort((a, b) => new Date(a.start) - new Date(b.start));
 
   let currentProg = null;
