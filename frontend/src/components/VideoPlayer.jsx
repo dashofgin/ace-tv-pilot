@@ -16,6 +16,11 @@ export default function VideoPlayer({ playbackUrl }) {
       try { hlsRef.current.destroy(); } catch {}
       hlsRef.current = null;
     }
+    if (videoRef.current) {
+      videoRef.current.onwaiting = null;
+      videoRef.current.onplaying = null;
+      videoRef.current.oncanplay = null;
+    }
   }, []);
 
   useEffect(() => {
@@ -36,7 +41,12 @@ export default function VideoPlayer({ playbackUrl }) {
       };
       video.onwaiting = () => setBuffering(true);
       video.onplaying = () => setBuffering(false);
-      return () => { video.src = ''; };
+      return () => {
+        video.onloadedmetadata = null;
+        video.onwaiting = null;
+        video.onplaying = null;
+        video.src = '';
+      };
     }
 
     // Chrome/Firefox: hls.js - minimal config like AceMux

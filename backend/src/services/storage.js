@@ -26,7 +26,9 @@ function readJSON(filename) {
 function writeJSON(filename, data) {
   ensureDataDir();
   const filePath = path.join(DATA_DIR, filename);
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+  const tmpPath = filePath + '.tmp';
+  fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+  fs.renameSync(tmpPath, filePath);
 }
 
 function getChannels() {

@@ -9,7 +9,6 @@ const channelsRoutes = require('./routes/channels');
 const streamRoutes = require('./routes/stream');
 const checkRoutes = require('./routes/check');
 const epgRoutes = require('./routes/epg');
-const discoverRoutes = require('./routes/discover');
 const dataRoutes = require('./routes/data');
 const aceproxyRoutes = require('./routes/aceproxy');
 
@@ -51,9 +50,8 @@ app.use('/api/channels', authMiddleware, channelsRoutes);
 app.use('/api/stream', authMiddleware, streamRoutes);
 app.use('/api/check', authMiddleware, checkRoutes);
 app.use('/api/epg', authMiddleware, epgRoutes);
-app.use('/api/discover', authMiddleware, discoverRoutes);
 app.use('/api', authMiddleware, dataRoutes);
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Ace TV Pilot backend running on port ${PORT}`);
+  console.log(`Dash TV backend running on port ${PORT}`);
 });

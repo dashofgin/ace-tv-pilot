@@ -9,8 +9,9 @@ const ACESTREAM_URL = process.env.ACESTREAM_URL || 'http://acestream:6878';
 
 const router = express.Router();
 
-// Cache: infohash -> boolean (whether this stream needs transcoding)
+// Cache: infohash -> { needs: boolean, ts: number }
 const transcodeCache = new Map();
+const CACHE_TTL = 4 * 60 * 60 * 1000; // 4 hours
 
 // Check VAAPI availability once at startup
 let useVaapi = false;
@@ -74,7 +75,7 @@ function sendRaw(data, res) {
   res.end(data);
 }
 
-function sendTranscoded(data, res) {
+function sendTranscoded(data, res, req) {
   const ffmpeg = spawn('ffmpeg', getTranscodeArgs(), { stdio: ['pipe', 'pipe', 'pipe'] });
 
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -91,6 +92,8 @@ function sendTranscoded(data, res) {
   ffmpeg.on('close', (code) => {
     if (code !== 0 && !res.headersSent) res.status(502).send('Transcode failed');
   });
+
+  req.on('close', () => ffmpeg.kill('SIGTERM'));
 }
 
 function pipeTranscoded(proxyRes, res, req) {
@@ -126,8 +129,10 @@ router.all('/*', async (req, res) => {
     const parts = restPath.split('/');
     const infohash = parts.length >= 2 ? parts[1] : null;
 
-    // If we haven't probed this infohash yet, buffer first segment and probe
-    if (infohash && !transcodeCache.has(infohash)) {
+    // If we haven't probed this infohash yet (or cache expired), buffer first segment and probe
+    const cached = transcodeCache.get(infohash);
+    const cacheValid = cached && (Date.now() - cached.ts < CACHE_TTL);
+    if (infohash && !cacheValid) {
       const proxyReq = http.get(target, (proxyRes) => {
         if (proxyRes.statusCode !== 200) {
           res.writeHead(proxyRes.statusCode);
@@ -144,12 +149,12 @@ router.all('/*', async (req, res) => {
           try {
             fs.writeFileSync(tmpFile, data);
             const needs = probeNeedsTranscode(tmpFile);
-            transcodeCache.set(infohash, needs);
+            transcodeCache.set(infohash, { needs, ts: Date.now() });
             console.log(`[ace proxy] Probe ${infohash.slice(0, 8)}: ${needs ? 'TRANSCODE (interlaced/MP2)' : 'PASSTHROUGH (progressive/AAC)'}`);
             fs.unlinkSync(tmpFile);
 
             if (needs) {
-              sendTranscoded(data, res);
+              sendTranscoded(data, res, req);
             } else {
               sendRaw(data, res);
             }
@@ -169,7 +174,7 @@ router.all('/*', async (req, res) => {
     }
 
     // Subsequent segments: use cached decision
-    const shouldTranscode = transcodeCache.get(infohash);
+    const shouldTranscode = cached?.needs;
 
     const proxyReq = http.get(target, (proxyRes) => {
       if (proxyRes.statusCode !== 200) {

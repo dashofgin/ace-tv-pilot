@@ -36,7 +36,6 @@ services:
       - /dev/dri:/dev/dri
     environment:
       - ACESTREAM_URL=http://acestream:6878
-      - HTTPACEPROXY_URL=http://httpaceproxy:8888
       - AUTH_USERNAME=${AUTH_USERNAME:-admin}
       - AUTH_PASSWORD=${AUTH_PASSWORD:-changeme}
       - SESSION_SECRET=${SESSION_SECRET:-change-this-secret}
