@@ -35,7 +35,9 @@ export default function GuidePage() {
         const epg = await epgRes.json();
         setChannels(Array.isArray(chData) ? chData : chData.channels || []);
         setEpgData(epg);
-      } catch {}
+      } catch (err) {
+        console.error('GuidePage: failed to load data', err);
+      }
       setLoading(false);
     }
     load();
