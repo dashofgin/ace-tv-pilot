@@ -4,38 +4,44 @@ const fs = require('fs');
 const path = require('path');
 
 const router = express.Router();
-const HASH_FILE = path.join(__dirname, '../../data/.password_hash');
+const USERS_FILE = path.join(__dirname, '../../data/.users.json');
 const SALT_ROUNDS = 10;
 
-function getPasswordHash() {
+// Default users - password will be hashed on first login
+const DEFAULT_USERS = ['admin', 'test', 'kasia'];
+
+function getUsers() {
   try {
-    if (fs.existsSync(HASH_FILE)) {
-      return fs.readFileSync(HASH_FILE, 'utf-8').trim();
+    if (fs.existsSync(USERS_FILE)) {
+      return JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8'));
     }
   } catch {}
-  return null;
+  return {};
 }
 
-function savePasswordHash(hash) {
-  const dir = path.dirname(HASH_FILE);
+function saveUsers(users) {
+  const dir = path.dirname(USERS_FILE);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  const tmpPath = HASH_FILE + '.tmp';
-  fs.writeFileSync(tmpPath, hash, 'utf-8');
-  fs.renameSync(tmpPath, HASH_FILE);
+  const tmpPath = USERS_FILE + '.tmp';
+  fs.writeFileSync(tmpPath, JSON.stringify(users, null, 2), 'utf-8');
+  fs.renameSync(tmpPath, USERS_FILE);
 }
 
-async function verifyPassword(password) {
-  const hash = getPasswordHash();
+async function verifyPassword(username, password) {
+  if (!DEFAULT_USERS.includes(username)) return false;
 
-  if (hash) {
-    return bcrypt.compare(password, hash);
+  const users = getUsers();
+
+  if (users[username]) {
+    return bcrypt.compare(password, users[username]);
   }
 
-  // No hash yet - compare against env plaintext, then auto-hash on first login
+  // No hash yet for this user - compare against env default, then auto-hash
   const envPass = process.env.AUTH_PASSWORD || 'changeme';
   if (password === envPass) {
-    const newHash = await bcrypt.hash(password, SALT_ROUNDS);
-    savePasswordHash(newHash);
+    const hash = await bcrypt.hash(password, SALT_ROUNDS);
+    users[username] = hash;
+    saveUsers(users);
     return true;
   }
 
@@ -44,13 +50,8 @@ async function verifyPassword(password) {
 
 router.post('/login', async (req, res) => {
   const { username, password } = req.body;
-  const validUser = process.env.AUTH_USERNAME || 'admin';
 
-  if (username !== validUser) {
-    return res.status(401).json({ error: 'Nieprawidlowy login lub haslo' });
-  }
-
-  const valid = await verifyPassword(password);
+  const valid = await verifyPassword(username, password);
   if (valid) {
     req.session.authenticated = true;
     req.session.username = username;
@@ -76,8 +77,9 @@ router.post('/change-password', async (req, res) => {
   }
 
   const { currentPassword, newPassword } = req.body;
+  const username = req.session.username;
 
-  const valid = await verifyPassword(currentPassword);
+  const valid = await verifyPassword(username, currentPassword);
   if (!valid) {
     return res.status(400).json({ error: 'Obecne haslo jest nieprawidlowe' });
   }
@@ -86,12 +88,9 @@ router.post('/change-password', async (req, res) => {
     return res.status(400).json({ error: 'Nowe haslo musi miec minimum 4 znaki' });
   }
 
-  const newHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
-  savePasswordHash(newHash);
-
-  // Remove old plaintext file if exists
-  const oldFile = path.join(__dirname, '../../data/.password');
-  try { fs.unlinkSync(oldFile); } catch {}
+  const users = getUsers();
+  users[username] = await bcrypt.hash(newPassword, SALT_ROUNDS);
+  saveUsers(users);
 
   return res.json({ ok: true, message: 'Haslo zmienione' });
 });
