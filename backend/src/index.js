@@ -16,13 +16,6 @@ const aceproxyRoutes = require('./routes/aceproxy');
 require('./cron/linkChecker');
 require('./cron/epgUpdater');
 
-// Load saved password if exists
-const fs = require('fs');
-const passwordFile = path.join(__dirname, '../data/.password');
-if (fs.existsSync(passwordFile)) {
-  process.env.AUTH_PASSWORD = fs.readFileSync(passwordFile, 'utf-8').trim();
-}
-
 const app = express();
 const PORT = 3001;
 
