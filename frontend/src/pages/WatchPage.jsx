@@ -4,6 +4,7 @@ import { useStream } from '../hooks/useStream';
 import ChannelGrid from '../components/ChannelGrid';
 import VideoPlayer from '../components/VideoPlayer';
 import StreamStats from '../components/StreamStats';
+import EpgTimeline from '../components/EpgTimeline';
 
 const CATEGORIES = [
   { value: 'all', label: 'Wszystkie' },
@@ -80,6 +81,9 @@ export default function WatchPage() {
                   </button>
                 </div>
               </div>
+              {activeChannel?.epgName && (
+                <EpgTimeline epgName={activeChannel.epgName} />
+              )}
             </>
           )}
         </div>

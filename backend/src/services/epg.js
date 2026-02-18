@@ -83,7 +83,7 @@ function parseEpgDate(str) {
 }
 
 function getEpgForChannel(epgName) {
-  if (!epgName) return { now: null, next: null };
+  if (!epgName) return { now: null, next: null, schedule: [] };
 
   const cache = getEpgCache();
   const now = Date.now();
@@ -98,6 +98,7 @@ function getEpgForChannel(epgName) {
 
   let currentProg = null;
   let nextProg = null;
+  const schedule = [];
 
   for (const p of programs) {
     const start = new Date(p.start).getTime();
@@ -105,12 +106,14 @@ function getEpgForChannel(epgName) {
 
     if (start <= now && stop > now) {
       currentProg = p;
-    } else if (start > now && !nextProg) {
-      nextProg = p;
+      schedule.push(p);
+    } else if (start > now) {
+      if (!nextProg) nextProg = p;
+      schedule.push(p);
     }
   }
 
-  return { now: currentProg, next: nextProg };
+  return { now: currentProg, next: nextProg, schedule };
 }
 
 module.exports = { fetchAndParseEPG, getEpgForChannel };
