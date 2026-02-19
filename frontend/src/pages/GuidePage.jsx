@@ -23,27 +23,40 @@ export default function GuidePage() {
   const [filter, setFilter] = useState('all');
   const [now, setNow] = useState(Date.now());
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function loadData() {
+    try {
+      const [chRes, epgRes] = await Promise.all([
+        fetch('/api/channels'),
+        fetch('/api/epg'),
+      ]);
+      const chData = await chRes.json();
+      const epg = await epgRes.json();
+      setChannels(Array.isArray(chData) ? chData : chData.channels || []);
+      setEpgData(epg);
+    } catch (err) {
+      console.error('GuidePage: failed to load data', err);
+    }
+    setLoading(false);
+  }
 
   useEffect(() => {
-    async function load() {
-      try {
-        const [chRes, epgRes] = await Promise.all([
-          fetch('/api/channels'),
-          fetch('/api/epg'),
-        ]);
-        const chData = await chRes.json();
-        const epg = await epgRes.json();
-        setChannels(Array.isArray(chData) ? chData : chData.channels || []);
-        setEpgData(epg);
-      } catch (err) {
-        console.error('GuidePage: failed to load data', err);
-      }
-      setLoading(false);
-    }
-    load();
-    const interval = setInterval(load, 5 * 60 * 1000);
+    loadData();
+    const interval = setInterval(loadData, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    try {
+      await fetch('/api/epg/refresh', { method: 'POST' });
+      await loadData();
+    } catch (err) {
+      console.error('GuidePage: refresh failed', err);
+    }
+    setRefreshing(false);
+  }
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 30000);
@@ -115,11 +128,20 @@ export default function GuidePage() {
             </button>
           ))}
         </div>
-        {updatedAt && (
-          <span className="text-xs text-gray-500 shrink-0 ml-4">
-            Aktualizacja: {updatedAt}
-          </span>
-        )}
+        <div className="flex items-center gap-2 shrink-0 ml-4">
+          {updatedAt && (
+            <span className="text-xs text-gray-500">
+              {updatedAt}
+            </span>
+          )}
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="px-2.5 py-1 text-xs bg-gray-800 hover:bg-gray-700 disabled:bg-gray-800 disabled:text-gray-600 text-gray-400 rounded-lg transition-colors"
+          >
+            {refreshing ? 'Odswiezanie...' : 'Odswiez EPG'}
+          </button>
+        </div>
       </div>
 
       {/* Channel list */}
