@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import ChangePasswordModal from './ChangePasswordModal';
 
-export default function Navbar({ onLogout }) {
+export default function Navbar({ onLogout, isAdmin }) {
   const navigate = useNavigate();
   const [showPasswordModal, setShowPasswordModal] = useState(false);
 
@@ -26,6 +26,7 @@ export default function Navbar({ onLogout }) {
             <NavLink to="/watch" className={linkClass}>Ogladaj</NavLink>
             <NavLink to="/guide" className={linkClass}>Telegazeta</NavLink>
             <NavLink to="/manage" className={linkClass}>Kanaly</NavLink>
+            {isAdmin && <NavLink to="/status" className={linkClass}>Status</NavLink>}
           </div>
           <div className="flex items-center gap-3">
             <button

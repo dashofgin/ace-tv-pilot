@@ -3,7 +3,7 @@ const ACESTREAM_URL = process.env.ACESTREAM_URL || 'http://acestream:6878';
 // In-memory mapping: hash -> { playbackUrl, sessionPlaybackUrl, statUrl, infohash }
 const sessions = new Map();
 
-async function startStream(hash) {
+async function startStream(hash, username, clientIp) {
   // Use format=json to get proper session with sliding-window manifest URL
   const url = `${ACESTREAM_URL}/ace/manifest.m3u8?id=${hash}&format=json`;
 
@@ -34,6 +34,9 @@ async function startStream(hash) {
     statUrl: stat_url,
     commandUrl: command_url,
     infohash,
+    username: username || null,
+    clientIp: clientIp || null,
+    startedAt: new Date().toISOString(),
   };
 
   sessions.set(hash, session);

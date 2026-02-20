@@ -7,7 +7,6 @@ export function useStream() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const statsInterval = useRef(null);
-  const statUrlRef = useRef(null);
 
   const stopPolling = useCallback(() => {
     if (statsInterval.current) {
@@ -21,45 +20,34 @@ export function useStream() {
     setError(null);
     setStats(null);
     stopPolling();
-    statUrlRef.current = null;
 
     try {
-      // No transcode_audio - our proxy handles MP2→AAC via ffmpeg
-      const res = await fetch(`/ace/manifest.m3u8?id=${hash}&format=json`);
+      const res = await fetch(`/api/stream/start/${hash}`, { method: 'POST' });
 
       if (!res.ok) {
-        throw new Error(`AceStream error: ${res.status}`);
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Error: ${res.status}`);
       }
 
       const data = await res.json();
 
-      if (data.error) {
-        throw new Error(data.error);
-      }
-
-      const pbUrl = data.response?.playback_url || data.playback_url;
-      const stUrl = data.response?.stat_url || data.stat_url;
-
-      if (!pbUrl) {
+      if (!data.playbackUrl) {
         throw new Error('No playback URL returned');
       }
 
-      setPlaybackUrl(pbUrl);
+      setPlaybackUrl(data.playbackUrl);
       setActiveHash(hash);
-      statUrlRef.current = stUrl;
 
-      // Start polling stats
-      if (stUrl) {
-        statsInterval.current = setInterval(async () => {
-          try {
-            const statsRes = await fetch(stUrl);
-            if (statsRes.ok) {
-              const statsData = await statsRes.json();
-              setStats(statsData.response || statsData);
-            }
-          } catch {}
-        }, 3000);
-      }
+      // Poll stats through backend
+      statsInterval.current = setInterval(async () => {
+        try {
+          const statsRes = await fetch(`/api/stream/stats/${hash}`);
+          if (statsRes.ok) {
+            const statsData = await statsRes.json();
+            setStats(statsData);
+          }
+        } catch {}
+      }, 3000);
     } catch (err) {
       setError(err.message);
       setPlaybackUrl(null);
@@ -70,12 +58,14 @@ export function useStream() {
 
   const stopStream = useCallback(async () => {
     stopPolling();
+    if (activeHash) {
+      fetch(`/api/stream/stop/${activeHash}`, { method: 'POST' }).catch(() => {});
+    }
     setPlaybackUrl(null);
     setActiveHash(null);
     setStats(null);
     setError(null);
-    statUrlRef.current = null;
-  }, [stopPolling]);
+  }, [stopPolling, activeHash]);
 
   useEffect(() => {
     return () => stopPolling();

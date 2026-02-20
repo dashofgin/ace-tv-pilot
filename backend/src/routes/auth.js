@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
+const { adminMiddleware } = require('../middleware/auth');
 
 const router = express.Router();
 const USERS_FILE = path.join(__dirname, '../../data/.users.json');
@@ -28,21 +29,21 @@ function saveUsers(users) {
 }
 
 async function verifyPassword(username, password) {
-  if (!DEFAULT_USERS.includes(username)) return false;
-
   const users = getUsers();
 
   if (users[username]) {
     return bcrypt.compare(password, users[username]);
   }
 
-  // No hash yet for this user - compare against env default, then auto-hash
-  const envPass = process.env.AUTH_PASSWORD || 'changeme';
-  if (password === envPass) {
-    const hash = await bcrypt.hash(password, SALT_ROUNDS);
-    users[username] = hash;
-    saveUsers(users);
-    return true;
+  // Default users can login with env password on first use (auto-hash)
+  if (DEFAULT_USERS.includes(username)) {
+    const envPass = process.env.AUTH_PASSWORD || 'changeme';
+    if (password === envPass) {
+      const hash = await bcrypt.hash(password, SALT_ROUNDS);
+      users[username] = hash;
+      saveUsers(users);
+      return true;
+    }
   }
 
   return false;
@@ -97,9 +98,61 @@ router.post('/change-password', async (req, res) => {
 
 router.get('/status', (req, res) => {
   if (req.session && req.session.authenticated) {
-    return res.json({ authenticated: true, username: req.session.username });
+    return res.json({
+      authenticated: true,
+      username: req.session.username,
+      isAdmin: req.session.username === 'admin',
+    });
   }
   return res.json({ authenticated: false });
+});
+
+// Admin: list users
+router.get('/users', adminMiddleware, (req, res) => {
+  const users = getUsers();
+  const userList = Object.keys(users).map(name => ({ username: name }));
+  res.json({ users: userList });
+});
+
+// Admin: add user
+router.post('/users', adminMiddleware, async (req, res) => {
+  const { username, password } = req.body;
+
+  if (!username || username.length < 2) {
+    return res.status(400).json({ error: 'Login musi miec minimum 2 znaki' });
+  }
+  if (!password || password.length < 4) {
+    return res.status(400).json({ error: 'Haslo musi miec minimum 4 znaki' });
+  }
+
+  const users = getUsers();
+  if (users[username]) {
+    return res.status(400).json({ error: 'Uzytkownik juz istnieje' });
+  }
+
+  users[username] = await bcrypt.hash(password, SALT_ROUNDS);
+  saveUsers(users);
+
+  res.json({ ok: true, message: `Uzytkownik ${username} dodany` });
+});
+
+// Admin: delete user
+router.delete('/users/:username', adminMiddleware, (req, res) => {
+  const { username } = req.params;
+
+  if (username === 'admin') {
+    return res.status(400).json({ error: 'Nie mozna usunac konta admin' });
+  }
+
+  const users = getUsers();
+  if (!users[username]) {
+    return res.status(404).json({ error: 'Uzytkownik nie istnieje' });
+  }
+
+  delete users[username];
+  saveUsers(users);
+
+  res.json({ ok: true, message: `Uzytkownik ${username} usuniety` });
 });
 
 module.exports = router;

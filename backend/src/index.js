@@ -3,7 +3,7 @@ const session = require('express-session');
 const cors = require('cors');
 const path = require('path');
 
-const authMiddleware = require('./middleware/auth');
+const { authMiddleware } = require('./middleware/auth');
 const authRoutes = require('./routes/auth');
 const channelsRoutes = require('./routes/channels');
 const streamRoutes = require('./routes/stream');
@@ -19,6 +19,7 @@ require('./cron/epgUpdater');
 const app = express();
 const PORT = 3001;
 
+app.set('trust proxy', true);
 app.use(cors());
 app.use(express.json());
 

@@ -1,7 +1,7 @@
 const express = require('express');
 const acestream = require('../services/acestream');
-
-const ACESTREAM_URL = process.env.ACESTREAM_URL || 'http://acestream:6878';
+const { adminMiddleware } = require('../middleware/auth');
+const { getChannels } = require('../services/storage');
 
 const router = express.Router();
 
@@ -9,7 +9,8 @@ const router = express.Router();
 router.post('/start/:hash', async (req, res) => {
   try {
     const { hash } = req.params;
-    const result = await acestream.startStream(hash);
+    const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip;
+    const result = await acestream.startStream(hash, req.session?.username, clientIp);
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: `Nie udało się uruchomić streamu: ${err.message}` });
@@ -74,6 +75,42 @@ router.post('/stop/:hash', async (req, res) => {
     res.json({ ok: true, message: 'Stream zatrzymany' });
   } catch (err) {
     res.status(500).json({ error: 'Błąd zatrzymywania streamu' });
+  }
+});
+
+// GET /api/stream/active - admin only: list active streams
+router.get('/active', adminMiddleware, async (req, res) => {
+  try {
+    const channels = getChannels();
+    const channelList = channels.channels || [];
+
+    // Build hash → channel name lookup
+    const hashToChannel = {};
+    for (const ch of channelList) {
+      for (const link of (ch.links || [])) {
+        hashToChannel[link.hash] = ch.name;
+      }
+    }
+
+    const active = [];
+    for (const [hash, session] of acestream.sessions) {
+      const stats = await acestream.getStats(hash);
+      active.push({
+        hash,
+        channel: hashToChannel[hash] || hash,
+        username: session.username,
+        clientIp: session.clientIp,
+        startedAt: session.startedAt,
+        peers: stats?.peers || 0,
+        speedDown: stats?.speed_down || 0,
+        speedUp: stats?.speed_up || 0,
+        status: stats?.status || 'unknown',
+      });
+    }
+
+    res.json({ streams: active });
+  } catch (err) {
+    res.status(500).json({ error: 'Blad pobierania aktywnych streamow' });
   }
 });
 
